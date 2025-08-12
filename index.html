@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Love 💘</title>
+  <style>
+    :root {
+      --pastel-pink: #ffd1dc;
+      --pastel-blue: #c2f0fc;
+      --pastel-lavender: #e6ccff;
+      --pastel-yellow: #fff9c4;
+      --text: #333;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Comic Sans MS';
+      background-color: #ffe4ec;
+      overflow: hidden;
+    }
+    h1 {
+      color: #ff4d94;
+      animation: fadeIn 0.5s ease-in-out; /* Reducida duración de la animación */
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: var(--pastel-blue);
+      border: 5px dashed var(--pastel-yellow);
+      border-radius: 15px;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--text);
+      font-weight: bold;
+      font-size: 18px;
+      background-color: var(--pastel-yellow);
+      padding: 8px 16px;
+      border-radius: 20px;
+      display: none;
+    }
+    #overlay, #gameOver {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.95);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+      flex-direction: column;
+      text-align: center;
+    }
+    #overlay img {
+      width: 300px;
+      max-width: 90%;
+      border-radius: 15px;
+      box-shadow: 0 0 10px var(--pastel-pink); /* Reducida sombra para menos carga */
+      animation: fadeIn 0.5s ease-in-out; /* Reducida duración */
+    }
+    .btn {
+      margin-top: 20px;
+      background: #ff4d94;
+      border: none;
+      padding: 10px 20px;
+      font-size: 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: 'Comic Sans MS';
+      color: #ffffff;
+      animation: fadeIn 0.5s ease-in-out; /* Reducida duración */
+    }
+    #startScreen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--pastel-pink);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      z-index: 15;
+    }
+    .confetti, .heart {
+      position: absolute;
+      animation: fall 2s linear forwards; /* Reducida duración de la animación */
+    }
+    .confetti {
+      width: 8px; /* Tamaño fijo más pequeño */
+      height: 8px;
+      background: var(--pastel-yellow);
+    }
+    .heart {
+      width: 12px; /* Tamaño fijo más pequeño */
+      height: 12px;
+      background: #ff4d94;
+      clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+    }
+    @keyframes fall {
+      to {
+        transform: translateY(100vh);
+        opacity: 0;
+      }
+    }
+    @keyframes fadeIn {
+      0% { opacity: 0; transform: scale(0.9); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <h1>Flappy Love</h1>
+    <button class="btn" onclick="startGame()">Comenzar</button>
+  </div>
+  <div id="info">Tiempo: <span id="time">0</span>s | Progreso: <span id="progress">0%</span></div>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+
+  <div id="overlay">
+    <h1>¡Ganaste, mi amor!</h1>
+    <img id="finalImage" src="elegir.png" alt="Imagen final" />
+    <button class="btn" onclick="resetGame()">Volver a jugar</button>
+  </div>
+
+  <div id="gameOver">
+    <h1>¡Perdiste!</h1>
+    <button class="btn" onclick="resetGame()">Volver a jugar</button>
+  </div>
+
+  <audio id="jumpSound" src="salto.mp3"></audio>
+  <audio id="loseSound" src="go.mp3"></audio>
+  <audio id="winSound" src="completado.mp3"></audio>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const jumpSound = document.getElementById("jumpSound");
+    const loseSound = document.getElementById("loseSound");
+    const winSound = document.getElementById("winSound");
+    const overlay = document.getElementById("overlay");
+    const gameOver = document.getElementById("gameOver");
+    const info = document.getElementById("info");
+    const startScreen = document.getElementById("startScreen");
+    const timeEl = document.getElementById("time");
+    const progressEl = document.getElementById("progress");
+
+    // Cargar la imagen del pájaro
+    const birdImage = new Image();
+    birdImage.src = "avatar.png"; // Asegúrate de que la ruta sea correcta
+
+    let bird, gravity, lift, pipes, frame, score, maxScore, interval, gameInterval, timePassed, gamePaused;
+
+    function resetGame() {
+      cancelAnimationFrame(gameInterval);
+      document.querySelectorAll('.confetti, .heart').forEach(e => e.remove());
+      overlay.style.display = 'none';
+      gameOver.style.display = 'none';
+      startScreen.style.display = 'flex';
+      info.style.display = 'none';
+      gamePaused = true;
+    }
+
+    function initGame() {
+      bird = { x: 50, y: 150, width: 50, height: 50, vy: 0 };
+      gravity = 0.5;
+      lift = -8;
+      pipes = [];
+      frame = 0;
+      score = 0;
+      maxScore = 10;
+      interval = 100;
+      timePassed = 0;
+      gamePaused = false;
+    }
+
+    function drawBird() {
+      ctx.drawImage(birdImage, bird.x - bird.width / 2, bird.y - bird.height / 2, bird.width, bird.height);
+    }
+
+    function drawPipe(pipe) {
+      ctx.fillStyle = "var(--pastel-yellow)";
+      ctx.fillRect(pipe.x, 0, pipe.width, pipe.top);
+      ctx.fillRect(pipe.x, pipe.bottom, pipe.width, canvas.height - pipe.bottom);
+    }
+
+    function update() {
+      if (gamePaused) return;
+
+      frame++;
+      timePassed = Math.floor(frame / 60);
+      timeEl.textContent = timePassed;
+      progressEl.textContent = Math.min(Math.floor((score / maxScore) * 100), 100) + "%";
+
+      bird.vy += gravity;
+      bird.y += bird.vy;
+
+      if (frame % interval === 0) {
+        let top = Math.random() * 150 + 30;
+        let gap = 150;
+        pipes.push({ x: canvas.width, width: 50, top: top, bottom: top + gap });
+      }
+
+      pipes.forEach(pipe => {
+        pipe.x -= 2;
+        drawPipe(pipe);
+
+        if (
+          bird.x + bird.width / 2 > pipe.x &&
+          bird.x - bird.width / 2 < pipe.x + pipe.width &&
+          (bird.y - bird.height / 2 < pipe.top || bird.y + bird.height / 2 > pipe.bottom)
+        ) {
+          loseSound.play();
+          gamePaused = true;
+          gameOver.style.display = 'flex';
+        }
+
+        if (pipe.x + pipe.width < bird.x && !pipe.passed) {
+          score++;
+          pipe.passed = true;
+        }
+      });
+
+      if (bird.y + bird.height / 2 > canvas.height || bird.y < 0) {
+        loseSound.play();
+        gamePaused = true;
+        gameOver.style.display = 'flex';
+      }
+
+      if (score >= maxScore) {
+        gamePaused = true;
+        overlay.style.display = 'flex';
+        winSound.play();
+        for (let i = 0; i < 50; i++) { // Reducido de 200 a 50 partículas
+          const isHeart = Math.random() < 0.3;
+          const particle = document.createElement('div');
+          particle.classList.add(isHeart ? 'heart' : 'confetti');
+          particle.style.left = Math.random() * 100 + 'vw';
+          particle.style.background = isHeart ? '#ff4d94' : `hsl(${Math.random() * 360}, 100%, 80%)`;
+          particle.style.animationDelay = Math.random() * 1 + 's'; // Retraso más corto
+          document.body.appendChild(particle);
+        }
+      }
+
+      pipes = pipes.filter(p => p.x + p.width > 0);
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBird();
+      pipes.forEach(drawPipe);
+    }
+
+    function loop() {
+      update();
+      draw();
+      gameInterval = requestAnimationFrame(loop);
+    }
+
+    function startGame() {
+      startScreen.style.display = 'none';
+      info.style.display = 'block';
+      initGame();
+      loop();
+    }
+
+    // Asegurarse de que la imagen esté cargada antes de iniciar el juego
+    birdImage.onload = () => {
+      console.log("Imagen del pájaro cargada correctamente");
+    };
+    birdImage.onerror = () => {
+      console.error("Error al cargar la imagen del pájaro");
+      drawBird = function() {
+        ctx.fillStyle = "var(--pastel-pink)";
+        ctx.beginPath();
+        ctx.arc(bird.x, bird.y, bird.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+      };
+    };
+
+    function playJumpSound() {
+      jumpSound.currentTime = 0;
+      jumpSound.play();
+    }
+
+    document.addEventListener("keydown", e => {
+      if (e.code === "Space" && !gamePaused) {
+        bird.vy = lift;
+        playJumpSound();
+      }
+    });
+    document.addEventListener("touchstart", () => {
+      if (!gamePaused) {
+        bird.vy = lift;
+        playJumpSound();
+      }
+    });
+  </script>
+</body>
+</html>
